@@ -2,7 +2,7 @@
 	<Map>prob_19x25_e1.xml</Map>
 	<Player Id="0">
 		<AgentClass>
-			<ClassName>randomMoveAgent</ClassName>
+			<ClassName>ProbabilisticSearchAgent</ClassName>
 		</AgentClass>
 	</Player>
 	<Player Id="0">
