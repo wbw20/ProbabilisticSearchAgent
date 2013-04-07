@@ -1,5 +1,6 @@
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.DecimalFormat;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -8,6 +9,7 @@ import java.util.Set;
 import edu.cwru.sepia.action.Action;
 import edu.cwru.sepia.agent.Agent;
 import edu.cwru.sepia.environment.model.history.History.HistoryView;
+import edu.cwru.sepia.environment.model.state.ResourceNode.ResourceView;
 import edu.cwru.sepia.environment.model.state.State.StateView;
 import edu.cwru.sepia.environment.model.state.Unit.UnitView;
 
@@ -61,7 +63,8 @@ public class ProbabilisticSearchAgent extends Agent {
 				if (x < state.getXExtent() && x > 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y > 0) {
-							towerProbs[x][y] *= (pShotGivenTower*pTower)/getPShot(peasant, state);
+//							towerProbs[x][y] *= (pShotGivenTower*pTower)/getPShot(peasant, state);
+							towerProbs[x][y] *= .75;
 						}
 					}
 				}
@@ -73,40 +76,93 @@ public class ProbabilisticSearchAgent extends Agent {
 				if (x < state.getXExtent() && x > 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y > 0) {
-							towerProbs[x][y] *= ((1 - pShotGivenTower)*pTower)/(1 - getPShot(peasant, state));
+//							towerProbs[x][y] = ((1 - pShotGivenTower)*pTower)/
+//									(((1 - pShotGivenTower)*pTower) + );
+							towerProbs[x][y] *= .25;
 						}
 					}
 				}
 			}
 		}
 		
-		for (UnitView peasant : state.getAllUnits()) {
-			if (peasant.getTemplateView().getName().equalsIgnoreCase("Peasant")) {
-				int xTile = 0;
-				int yTile = 0;
-				Double probability = Double.MAX_VALUE;
-				
-				for (int x = peasant.getXPosition() - 5; x < peasant.getXPosition() + 5; x++) {
-					if (x < state.getXExtent() && x > 0) {
-						for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
-							if (y < state.getYExtent() && y > 0) {
-								if (x > peasant.getXPosition() || y < peasant.getYPosition()) {
-									if (probability > towerProbs[x][y]) {
-										xTile = x;
-										yTile = y;
-										probability = towerProbs[x][y];
+		/** Mark all Tower squares with max probability */
+		for (UnitView unit: state.getAllUnits()) {
+			if (unit.getTemplateView().getName().equalsIgnoreCase("ScoutTower") ||
+				unit.getTemplateView().getName().equalsIgnoreCase("GuardTower")) {
+				towerProbs[unit.getXPosition()][unit.getYPosition()] = Double.MAX_VALUE;
+			}
+		}
+		
+		/** Mark all Resource squares with zero probability */
+		for (ResourceView resource: state.getAllResourceNodes()) {
+			System.out.println(resource.getType());
+			towerProbs[resource.getXPosition()][resource.getYPosition()] = 0.0;
+		}
+		
+		for (UnitView peasant : getAllPeasants(state)) {
+			int xTile = 0;
+			int yTile = 0;
+			Double probability = Double.MAX_VALUE;
+			
+			for (int x = peasant.getXPosition() - 1; x < peasant.getXPosition() + 1; x++) {
+				if (x < state.getXExtent() && x > 0) {
+					for (int y = peasant.getYPosition() - 1; y < peasant.getYPosition() + 1; y++) {
+						if (y < state.getYExtent() && y > 0 &&
+							    x > peasant.getXPosition() || y < peasant.getYPosition()) {
+							Double innerProbability = 0.0;
+							
+							for (int innerX = x - 5; innerX < x + 5; innerX++) {
+								if (innerX < state.getXExtent() && innerX > 0) {
+									for (int innerY = y - 5; innerY < y + 5; innerY++) {
+										if (innerY < state.getYExtent() && innerY > 0) {
+											innerProbability += towerProbs[innerX][innerY];
+										}
 									}
 								}
+							}
+							
+							if (innerProbability < probability) {
+								probability = innerProbability;
+								xTile = x;
+								yTile = y;
 							}
 						}
 					}
 				}
-				
-				toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
 			}
-		}			
+			
+			System.out.println(probability);
+			
+			toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
+		}	
+		
+		System.out.println("--------------------------------------------------------------------------------------------");
 		
 		return toReturn;
+	}
+	
+	private Set<UnitView> getAllPeasants(StateView state) {
+		Set<UnitView> toReturn = new HashSet<UnitView>();
+		
+		for (UnitView unit : state.getAllUnits()) {
+			if (unit.getTemplateView().getName().equalsIgnoreCase("Peasant")) {
+				toReturn.add(unit);
+			}
+		}
+		
+		return toReturn;
+	}
+	
+	private void printProbs() {
+		System.out.println("-----------------------------------------------------------------------------------------");
+		System.out.println("-----------------------------------------------------------------------------------------");
+		for (int x = 0; x < towerProbs.length; x++) {
+			for (int y = 0; y < towerProbs[x].length; y++) {
+				System.out.print("[" + new DecimalFormat("#.####").format(towerProbs[x][y]) + "] ");
+			}
+			
+			System.out.println();
+		}
 	}
 	
 	private Double getPShot(UnitView peasant, StateView state) {
