@@ -73,18 +73,21 @@ public class ProbabilisticSearchAgent extends Agent {
 		Set<UnitView> uninjured = getUninjured(state);
 		
 		for (UnitView peasant : injured) {
+			System.out.println("!!!!                   SHOT                !!!!");
 			for (int x = peasant.getXPosition() - 5; x < peasant.getXPosition() + 5; x++) {
 				if (x < state.getXExtent() && x >= 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
-//							towerProbs[x][y] *= (pShotGivenTower*pTower)/getPShot(peasant, state);
-							towerProbs[x][y] *= 20;
+//							Double temp = towerProbs[x][y];
+//							towerProbs[x][y] = (pShotGivenTower*towerProbs[x][y])/getPShot(peasant, state);
+//							temp = towerProbs[x][y];
+//							temp += 0;
+							towerProbs[x][y] *= 5;
 						}
 					}
 				}
 			}
 			
-			visited[peasant.getXPosition()][peasant.getYPosition()] = true;
 		}
 		
 		for (UnitView peasant : uninjured) {
@@ -92,9 +95,9 @@ public class ProbabilisticSearchAgent extends Agent {
 				if (x < state.getXExtent() && x >= 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
-//							towerProbs[x][y] = ((1 - pShotGivenTower)*pTower)/
-//									(((1 - pShotGivenTower)*pTower) + );
-							towerProbs[x][y] *= .25;
+							towerProbs[x][y] = ((1 - pShotGivenTower)*towerProbs[x][y])/(1 - getPShot(peasant, state));
+							
+//							towerProbs[x][y] *= .25;
 						}
 					}
 				}
@@ -105,14 +108,14 @@ public class ProbabilisticSearchAgent extends Agent {
 		for (UnitView unit: state.getAllUnits()) {
 			if (unit.getTemplateView().getName().equalsIgnoreCase("ScoutTower") ||
 				unit.getTemplateView().getName().equalsIgnoreCase("GuardTower")) {
-				knownTiles[unit.getXPosition()][unit.getYPosition()] = BIG_VALUE;
+				knownTiles[unit.getXPosition()][unit.getYPosition()] = 1.0;
 				occupied[unit.getXPosition()][unit.getYPosition()] = true;
 			}
 		}
 		
 		/** Mark all Resource squares with zero probability */
 		for (ResourceView resource: state.getAllResourceNodes()) {
-			knownTiles[resource.getXPosition()][resource.getYPosition()] = .01;
+			knownTiles[resource.getXPosition()][resource.getYPosition()] = .0;
 			occupied[resource.getXPosition()][resource.getYPosition()] = true;
 		}
 		
@@ -122,13 +125,14 @@ public class ProbabilisticSearchAgent extends Agent {
 					for (int y = peasant.getYPosition() - 3; y < peasant.getYPosition() + 3; y++) {
 						if (y >= 0 && y < state.getYExtent()) {
 							if (!occupied[x][y]) {
-								knownTiles[x][y] = 0.0;
+								knownTiles[x][y] = 0.0; // ??? this was 0.5 for some reason
 							}
 						}
 					}
 				}
 			}
 			
+			visited[peasant.getXPosition()][peasant.getYPosition()] = true;
 			occupied[peasant.getXPosition()][peasant.getYPosition()] = true;
 		}
 		
@@ -152,6 +156,7 @@ public class ProbabilisticSearchAgent extends Agent {
 												innerProbability += knownTiles[innerX][innerY];
 											} else {
 												innerProbability += towerProbs[innerX][innerY];
+//												System.out.println("Tower Prob: " + towerProbs[innerX][innerY]);
 											}
 										}
 									}
@@ -161,15 +166,15 @@ public class ProbabilisticSearchAgent extends Agent {
 //							innerProbability += (Math.abs(y - 0) + Math.abs(x - state.getXExtent()));
 							
 							if (x > peasant.getXPosition()) {
-								innerProbability /= 5;
+								innerProbability /= 15;
 							}
 							
 							if (y < peasant.getYPosition()) {
-								innerProbability /= 5;
+								innerProbability /= 15;
 							}
 							
 							if (!visited[x][y]) {
-								innerProbability /= 5;
+								innerProbability /= 10;
 							}
 							
 							System.out.println(innerProbability + "    CONSIDERING: " + x + ", " + y);
@@ -191,6 +196,8 @@ public class ProbabilisticSearchAgent extends Agent {
 			System.out.println(probability + " MOVE TO: " + xTile + ", " + yTile);
 			
 			toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
+			
+//			printProbs(state, peasant);
 		}	
 		
 		System.out.println("--------------------------------------------------------------------------------------------");
@@ -210,14 +217,22 @@ public class ProbabilisticSearchAgent extends Agent {
 		return toReturn;
 	}
 	
-	private void printProbs() {
+	private void printProbs(StateView state, UnitView unit) {
 		System.out.println("-----------------------------------------------------------------------------------------");
 		System.out.println("-----------------------------------------------------------------------------------------");
-		for (int x = 0; x < towerProbs.length; x++) {
-			for (int y = 0; y < towerProbs[x].length; y++) {
-				System.out.print("[" + new DecimalFormat("#.####").format(towerProbs[x][y]) + "] ");
+		for (int y = unit.getYPosition() - 7; y < unit.getYPosition() + 7; y++) {
+			for (int x = unit.getXPosition() - 7; x < unit.getXPosition() + 7; x++) {
+				if (x == unit.getXPosition() && y == unit.getYPosition()) {
+					System.out.print(" [ (0^0) ] ");
+				} else if (x >= 0 && x < state.getXExtent() &&
+					y >= 0 && y < state.getYExtent()) {
+					System.out.print(" [" + new DecimalFormat("#.#####").format(towerProbs[x][y]) + "] ");
+				} else {
+					System.out.print(" [  OFF  ] ");
+				}
 			}
-			
+			System.out.println("  " + y);
+			System.out.println();
 			System.out.println();
 		}
 	}
@@ -225,10 +240,10 @@ public class ProbabilisticSearchAgent extends Agent {
 	private Double getPShot(UnitView peasant, StateView state) {
 		Double total = 0.0;
 		
-		for (int x = peasant.getXPosition() - 5; x < peasant.getXPosition() + 5; x++) {
-			if (x < state.getXExtent() && x > 0) {
-				for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
-					if (y < state.getYExtent() && y > 0) {
+		for (int x = peasant.getXPosition() - 5; x <= peasant.getXPosition() + 5; x++) {
+			if (x < state.getXExtent() && x >= 0) {
+				for (int y = peasant.getYPosition() - 5; y <= peasant.getYPosition() + 5; y++) {
+					if (y < state.getYExtent() && y >= 0) {
 						total += towerProbs[x][y];
 					}
 				}
