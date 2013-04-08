@@ -21,6 +21,7 @@ public class ProbabilisticSearchAgent extends Agent {
 	private Double[][] towerProbs;
 	private Double[][] knownTiles;
 	private Boolean[][] occupied;
+	private Boolean[][] visited;
 	private Map<Integer, Integer> peasants;
 	private Double BIG_VALUE = 100.0;
 
@@ -33,19 +34,25 @@ public class ProbabilisticSearchAgent extends Agent {
 		towerProbs = new Double[state.getXExtent()][state.getYExtent()];
 		knownTiles = new Double[state.getXExtent()][state.getYExtent()];
 		occupied = new Boolean[state.getXExtent()][state.getYExtent()];
+		visited = new Boolean[state.getXExtent()][state.getYExtent()];
 		peasants = new HashMap<Integer, Integer>();
 
-		for (UnitView unit : state.getAllUnits()) {
-			if (unit.getTemplateView().getName().equalsIgnoreCase("Peasant")) {
-				peasants.put(unit.getID(), unit.getHP());
-			}
-		}
-		
 		for (int x = 0; x < towerProbs.length; x++) {
 			for (int y = 0; y < towerProbs[x].length; y++) {
 				towerProbs[x][y] = pTower;
 				knownTiles[x][y] = null;
 				occupied[x][y] = false;
+				visited[x][y] = false;
+			}
+		}
+		
+		for (UnitView unit : state.getAllUnits()) {
+			if (unit.getTemplateView().getName().equalsIgnoreCase("Peasant")) {
+				peasants.put(unit.getID(), unit.getHP());
+			}
+			
+			if (unit.getTemplateView().getName().equalsIgnoreCase("TownHall")) {
+				occupied[unit.getXPosition()][unit.getYPosition()] = true;
 			}
 		}
 
@@ -71,11 +78,13 @@ public class ProbabilisticSearchAgent extends Agent {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
 //							towerProbs[x][y] *= (pShotGivenTower*pTower)/getPShot(peasant, state);
-							towerProbs[x][y] *= .75;
+							towerProbs[x][y] *= 20;
 						}
 					}
 				}
 			}
+			
+			visited[peasant.getXPosition()][peasant.getYPosition()] = true;
 		}
 		
 		for (UnitView peasant : uninjured) {
@@ -103,7 +112,7 @@ public class ProbabilisticSearchAgent extends Agent {
 		
 		/** Mark all Resource squares with zero probability */
 		for (ResourceView resource: state.getAllResourceNodes()) {
-			knownTiles[resource.getXPosition()][resource.getYPosition()] = 0.0;
+			knownTiles[resource.getXPosition()][resource.getYPosition()] = .01;
 			occupied[resource.getXPosition()][resource.getYPosition()] = true;
 		}
 		
@@ -112,13 +121,15 @@ public class ProbabilisticSearchAgent extends Agent {
 				if (x >= 0 && x < state.getXExtent()) {
 					for (int y = peasant.getYPosition() - 3; y < peasant.getYPosition() + 3; y++) {
 						if (y >= 0 && y < state.getYExtent()) {
-							if (knownTiles[x][y] == null) {
+							if (!occupied[x][y]) {
 								knownTiles[x][y] = 0.0;
 							}
 						}
 					}
 				}
 			}
+			
+			occupied[peasant.getXPosition()][peasant.getYPosition()] = true;
 		}
 		
 		for (UnitView peasant : getAllPeasants(state)) {
@@ -147,7 +158,19 @@ public class ProbabilisticSearchAgent extends Agent {
 								}
 							}
 							
-							innerProbability += (Math.abs(y - 0) + Math.abs(x - state.getXExtent()));
+//							innerProbability += (Math.abs(y - 0) + Math.abs(x - state.getXExtent()));
+							
+							if (x > peasant.getXPosition()) {
+								innerProbability /= 5;
+							}
+							
+							if (y < peasant.getYPosition()) {
+								innerProbability /= 5;
+							}
+							
+							if (!visited[x][y]) {
+								innerProbability /= 5;
+							}
 							
 							System.out.println(innerProbability + "    CONSIDERING: " + x + ", " + y);
 							
@@ -159,6 +182,10 @@ public class ProbabilisticSearchAgent extends Agent {
 						}
 					}
 				}
+			}
+			
+			for (UnitView unit : getAllPeasants(state)) {
+				occupied[unit.getXPosition()][unit.getYPosition()] = false;
 			}
 			
 			System.out.println(probability + " MOVE TO: " + xTile + ", " + yTile);
