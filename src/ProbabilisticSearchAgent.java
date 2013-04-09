@@ -23,7 +23,9 @@ public class ProbabilisticSearchAgent extends Agent {
 	private Boolean[][] occupied;
 	private Boolean[][] visited;
 	private Map<Integer, Integer> peasants;
-	private Double BIG_VALUE = 100.0;
+	private Double UP_WEIGHTING = 4.0;
+	private Double RIGHT_WEIGHTING = 4.0;
+	private Double EXPLORATION_WEIGHTING = 3.5;
 
 	public ProbabilisticSearchAgent(int playernum) {
 		super(playernum);
@@ -53,6 +55,7 @@ public class ProbabilisticSearchAgent extends Agent {
 			
 			if (unit.getTemplateView().getName().equalsIgnoreCase("TownHall")) {
 				occupied[unit.getXPosition()][unit.getYPosition()] = true;
+				knownTiles[unit.getXPosition()][unit.getYPosition()] = 0.0;
 			}
 		}
 
@@ -74,24 +77,30 @@ public class ProbabilisticSearchAgent extends Agent {
 		
 		for (UnitView peasant : injured) {
 			System.out.println("!!!!                   SHOT                !!!!");
-			for (int x = peasant.getXPosition() - 5; x < peasant.getXPosition() + 5; x++) {
+			for (int x = peasant.getXPosition() - 4; x < peasant.getXPosition() + 5; x++) {
 				if (x < state.getXExtent() && x >= 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
 //							Double temp = towerProbs[x][y];
-//							towerProbs[x][y] = (pShotGivenTower*towerProbs[x][y])/getPShot(peasant, state);
+							towerProbs[x][y] = (pShotGivenTower*towerProbs[x][y])/getPShot(peasant, state);
 //							temp = towerProbs[x][y];
 //							temp += 0;
-							towerProbs[x][y] *= 5;
+//							towerProbs[x][y] *= 5;
 						}
 					}
 				}
 			}
 			
+			
+			EXPLORATION_WEIGHTING = Math.pow(EXPLORATION_WEIGHTING, .1);
+//			UP_WEIGHTING = Math.pow(UP_WEIGHTING, .1);
+//			RIGHT_WEIGHTING = Math.pow(RIGHT_WEIGHTING, .1);
+			
+//			EXPLORATION_WEIGHTING = 0.1;
 		}
 		
 		for (UnitView peasant : uninjured) {
-			for (int x = peasant.getXPosition() - 5; x < peasant.getXPosition() + 5; x++) {
+			for (int x = peasant.getXPosition() - 4; x < peasant.getXPosition() + 5; x++) {
 				if (x < state.getXExtent() && x >= 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
@@ -102,6 +111,10 @@ public class ProbabilisticSearchAgent extends Agent {
 					}
 				}
 			}
+			
+			EXPLORATION_WEIGHTING *= 2.5;
+//			UP_WEIGHTING *= 1.2;
+//			RIGHT_WEIGHTING *= 1.2;
 		}
 		
 		/** Mark all Tower squares with max probability */
@@ -120,9 +133,9 @@ public class ProbabilisticSearchAgent extends Agent {
 		}
 		
 		for (UnitView peasant : getAllPeasants(state)) {
-			for (int x = peasant.getXPosition() - 3; x < peasant.getXPosition() + 3; x++) {
+			for (int x = peasant.getXPosition() - 2; x < peasant.getXPosition() + 3; x++) {
 				if (x >= 0 && x < state.getXExtent()) {
-					for (int y = peasant.getYPosition() - 3; y < peasant.getYPosition() + 3; y++) {
+					for (int y = peasant.getYPosition() - 2; y < peasant.getYPosition() + 3; y++) {
 						if (y >= 0 && y < state.getYExtent()) {
 							if (!occupied[x][y]) {
 								knownTiles[x][y] = 0.0; // ??? this was 0.5 for some reason
@@ -147,37 +160,51 @@ public class ProbabilisticSearchAgent extends Agent {
 						if (y < state.getYExtent() && y >= 0 &&
 								occupied[x][y] == false) {
 							Double innerProbability = 0.0;
+							System.out.print("Considering [" + x + ", " + y + "]: (");
 							
-							for (int innerX = x - 5; innerX < x + 5; innerX++) {
+							for (int innerX = x - 4; innerX < x + 5; innerX++) {
 								if (innerX < state.getXExtent() && innerX >= 0) {
-									for (int innerY = y - 5; innerY < y + 5; innerY++) {
+									for (int innerY = y - 4; innerY < y + 5; innerY++) {
 										if (innerY < state.getYExtent() && innerY >= 0) {
 											if (knownTiles[innerX][innerY] != null) {
 												innerProbability += knownTiles[innerX][innerY];
+												System.out.print(knownTiles[innerX][innerY] + " + ");
 											} else {
 												innerProbability += towerProbs[innerX][innerY];
+												System.out.print(towerProbs[innerX][innerY] + " + ");
 //												System.out.println("Tower Prob: " + towerProbs[innerX][innerY]);
 											}
+										} else {
+											System.out.print(" OFF + ");
 										}
 									}
+								} else {
+									System.out.print(" OFF + ");
 								}
+								
+								System.out.println();
 							}
+							
+							System.out.print("0)");
 							
 //							innerProbability += (Math.abs(y - 0) + Math.abs(x - state.getXExtent()));
 							
 							if (x > peasant.getXPosition()) {
-								innerProbability /= 15;
+								innerProbability /= RIGHT_WEIGHTING;
+								System.out.print(" / " + RIGHT_WEIGHTING);
 							}
 							
 							if (y < peasant.getYPosition()) {
-								innerProbability /= 15;
+								innerProbability /= UP_WEIGHTING;
+								System.out.print(" / " + UP_WEIGHTING);
 							}
 							
 							if (!visited[x][y]) {
-								innerProbability /= 10;
+								innerProbability /= EXPLORATION_WEIGHTING;
+								System.out.print(" / " + EXPLORATION_WEIGHTING);
 							}
 							
-							System.out.println(innerProbability + "    CONSIDERING: " + x + ", " + y);
+							System.out.println(" = " + innerProbability);
 							
 							if (innerProbability < probability) {
 								probability = innerProbability;
@@ -197,7 +224,7 @@ public class ProbabilisticSearchAgent extends Agent {
 			
 			toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
 			
-//			printProbs(state, peasant);
+			printProbs(state, peasant);
 		}	
 		
 		System.out.println("--------------------------------------------------------------------------------------------");
@@ -226,7 +253,11 @@ public class ProbabilisticSearchAgent extends Agent {
 					System.out.print(" [ (0^0) ] ");
 				} else if (x >= 0 && x < state.getXExtent() &&
 					y >= 0 && y < state.getYExtent()) {
-					System.out.print(" [" + new DecimalFormat("#.#####").format(towerProbs[x][y]) + "] ");
+					if (towerProbs[x][y] < .000005) {
+						System.out.print(" [0.00000] ");
+					} else {
+						System.out.print(" [" + new DecimalFormat("#.#####").format(towerProbs[x][y]) + "] ");
+					}
 				} else {
 					System.out.print(" [  OFF  ] ");
 				}
@@ -240,9 +271,9 @@ public class ProbabilisticSearchAgent extends Agent {
 	private Double getPShot(UnitView peasant, StateView state) {
 		Double total = 0.0;
 		
-		for (int x = peasant.getXPosition() - 5; x <= peasant.getXPosition() + 5; x++) {
+		for (int x = peasant.getXPosition() - 4; x <= peasant.getXPosition() + 5; x++) {
 			if (x < state.getXExtent() && x >= 0) {
-				for (int y = peasant.getYPosition() - 5; y <= peasant.getYPosition() + 5; y++) {
+				for (int y = peasant.getYPosition() - 4; y <= peasant.getYPosition() + 5; y++) {
 					if (y < state.getYExtent() && y >= 0) {
 						total += towerProbs[x][y];
 					}
