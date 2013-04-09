@@ -23,6 +23,8 @@ public class ProbabilisticSearchAgent extends Agent {
 	private Boolean[][] occupied;
 	private Boolean[][] visited;
 	private Map<Integer, Integer> peasants;
+	
+	// Heuristic weights
 	private Double UP_WEIGHTING = 4.0;
 	private Double RIGHT_WEIGHTING = 4.0;
 	private Double EXPLORATION_WEIGHTING = 3.5;
@@ -93,6 +95,8 @@ public class ProbabilisticSearchAgent extends Agent {
 			
 			
 			EXPLORATION_WEIGHTING = Math.pow(EXPLORATION_WEIGHTING, .1);
+			UP_WEIGHTING = 1.0;
+			RIGHT_WEIGHTING = 1.0;
 //			UP_WEIGHTING = Math.pow(UP_WEIGHTING, .1);
 //			RIGHT_WEIGHTING = Math.pow(RIGHT_WEIGHTING, .1);
 			
@@ -113,8 +117,8 @@ public class ProbabilisticSearchAgent extends Agent {
 			}
 			
 			EXPLORATION_WEIGHTING *= 2.5;
-//			UP_WEIGHTING *= 1.2;
-//			RIGHT_WEIGHTING *= 1.2;
+			UP_WEIGHTING *= 3.0;
+			RIGHT_WEIGHTING *= 3.0;
 		}
 		
 		/** Mark all Tower squares with max probability */
@@ -219,7 +223,7 @@ public class ProbabilisticSearchAgent extends Agent {
 			for (UnitView unit : getAllPeasants(state)) {
 				occupied[unit.getXPosition()][unit.getYPosition()] = false;
 			}
-			
+
 			System.out.println(probability + " MOVE TO: " + xTile + ", " + yTile);
 			
 			toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
