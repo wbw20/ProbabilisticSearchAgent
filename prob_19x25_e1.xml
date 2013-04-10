@@ -13,7 +13,7 @@
         </unit>
         <unit>
             <ID>2</ID>
-            <currentHealth>3000</currentHealth>
+            <currentHealth>30</currentHealth>
             <xPosition>0</xPosition>
             <yPosition>16</yPosition>
             <templateID>26</templateID>
@@ -22,7 +22,7 @@
         </unit>
         <unit>
             <ID>3</ID>
-            <currentHealth>3000</currentHealth>
+            <currentHealth>30</currentHealth>
             <xPosition>1</xPosition>
             <yPosition>16</yPosition>
             <templateID>26</templateID>
@@ -31,7 +31,7 @@
         </unit>
         <unit>
             <ID>4</ID>
-            <currentHealth>3000</currentHealth>
+            <currentHealth>30</currentHealth>
             <xPosition>1</xPosition>
             <yPosition>17</yPosition>
             <templateID>26</templateID>

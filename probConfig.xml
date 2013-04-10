@@ -1,5 +1,5 @@
 <Configuration>
-	<Map>prob_19x25_e1.xml</Map>
+	<Map>prob_32x32_e1.xml</Map>
 	<Player Id="0">
 		<AgentClass>
 			<ClassName>ProbabilisticSearchAgent</ClassName>

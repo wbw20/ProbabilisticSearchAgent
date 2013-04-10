@@ -14,24 +14,48 @@ import edu.cwru.sepia.environment.model.state.State.StateView;
 import edu.cwru.sepia.environment.model.state.Unit.UnitView;
 
 
+/**
+ * This agent uses Bayesian distributions to cause an agent to search 
+ * for a gold mine while avoiding enemy towers and then harvest gold
+ * until the player has 2000 gold.  Unfortunately, heuristics are not
+ * tuned properly, and so while the agent properly maintains the 
+ * distributions, peasants are often caught in areas of low risk
+ * indefinitely, or will traverse the board in spite of high risks
+ * because a heuristic is too powerful and is ignoring the probability
+ * distribution.
+ * 
+ * @author William Wettersten
+ * @author William Cork
+ *
+ */
 public class ProbabilisticSearchAgent extends Agent {
 	//Approximation of the chances a random square has a tower
 	private Double pTower = .00616;
 	private Double pShotGivenTower = .75;
+	
+	//These track our probability distribution, as well as 
+	//some other data like whether or not a given square
+	//contains a tower.
 	private Double[][] towerProbs;
 	private Double[][] knownTiles;
 	private Boolean[][] occupied;
 	private Boolean[][] visited;
 	private Map<Integer, Integer> peasants;
 	
-	// Heuristic weights
-	private Double UP_WEIGHTING = 4.0;
-	private Double RIGHT_WEIGHTING = 4.0;
-	private Double EXPLORATION_WEIGHTING = 3.5;
+	// Heuristic weights initial values
+	private static Double UP_WEIGHTING_INITIAL = 10.0;
+	private static Double RIGHT_WEIGHTING_INITIAL = 10.0;
+	private static Double EXPLORATION_WEIGHTING_INITIAL = 3.5;
+	
+	// Heuristic weights per peasant
+	private static Map<Integer, Double> UP_WEIGHTING;
+	private static Map<Integer, Double> RIGHT_WEIGHTING;
+	private static Map<Integer, Double> EXPLORATION_WEIGHTING;
 
 	public ProbabilisticSearchAgent(int playernum) {
 		super(playernum);
 	}
+
 
 	@Override
 	public Map<Integer, Action> initialStep(StateView state, HistoryView history) {
@@ -40,7 +64,12 @@ public class ProbabilisticSearchAgent extends Agent {
 		occupied = new Boolean[state.getXExtent()][state.getYExtent()];
 		visited = new Boolean[state.getXExtent()][state.getYExtent()];
 		peasants = new HashMap<Integer, Integer>();
+		
+		UP_WEIGHTING = new HashMap<Integer, Double>();
+		RIGHT_WEIGHTING = new HashMap<Integer, Double>();
+		EXPLORATION_WEIGHTING = new HashMap<Integer, Double>();
 
+		//Fill out our probability distribution with initial values
 		for (int x = 0; x < towerProbs.length; x++) {
 			for (int y = 0; y < towerProbs[x].length; y++) {
 				towerProbs[x][y] = pTower;
@@ -50,9 +79,13 @@ public class ProbabilisticSearchAgent extends Agent {
 			}
 		}
 		
+		//Fill out our heuristic values with initial values
 		for (UnitView unit : state.getAllUnits()) {
 			if (unit.getTemplateView().getName().equalsIgnoreCase("Peasant")) {
 				peasants.put(unit.getID(), unit.getHP());
+				UP_WEIGHTING.put(unit.getID(), UP_WEIGHTING_INITIAL);
+				RIGHT_WEIGHTING.put(unit.getID(), RIGHT_WEIGHTING_INITIAL);
+				EXPLORATION_WEIGHTING.put(unit.getID(), EXPLORATION_WEIGHTING_INITIAL);
 			}
 			
 			if (unit.getTemplateView().getName().equalsIgnoreCase("TownHall")) {
@@ -70,6 +103,14 @@ public class ProbabilisticSearchAgent extends Agent {
 
 	}
 
+	/**
+	 * The middle step works by first taking an inventory of who was injured during the
+	 * last turn.  For those injured, the probability that there is a tower increases
+	 * for each cell in a 5 square radius.  For those not injured, the probability
+	 * that there is a tower decreases for all squares in a 5 square radius.  Then,
+	 * A utility function is calculated for each possible move of each peasant, and the move
+	 * with the lowest utilitty function is taken.
+	 */
 	@Override
 	public Map<Integer, Action> middleStep(StateView state, HistoryView history) {
 		Map<Integer, Action> toReturn = new HashMap<Integer, Action>();
@@ -77,51 +118,48 @@ public class ProbabilisticSearchAgent extends Agent {
 		Set<UnitView> injured = checkInjuries(state);
 		Set<UnitView> uninjured = getUninjured(state);
 		
+		//If a peasant was injured, we use Bayes' Theorem to increase the probability of a tower
+		//near where the peasant was shot.  Also, we make our agent more cautious by reweighting
+		//some of our heuristics.
 		for (UnitView peasant : injured) {
-			System.out.println("!!!!                   SHOT                !!!!");
 			for (int x = peasant.getXPosition() - 4; x < peasant.getXPosition() + 5; x++) {
 				if (x < state.getXExtent() && x >= 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
-//							Double temp = towerProbs[x][y];
 							towerProbs[x][y] = (pShotGivenTower*towerProbs[x][y])/getPShot(peasant, state);
-//							temp = towerProbs[x][y];
-//							temp += 0;
-//							towerProbs[x][y] *= 5;
 						}
 					}
 				}
 			}
 			
-			
-			EXPLORATION_WEIGHTING = Math.pow(EXPLORATION_WEIGHTING, .1);
-			UP_WEIGHTING = 1.0;
-			RIGHT_WEIGHTING = 1.0;
-//			UP_WEIGHTING = Math.pow(UP_WEIGHTING, .1);
-//			RIGHT_WEIGHTING = Math.pow(RIGHT_WEIGHTING, .1);
-			
-//			EXPLORATION_WEIGHTING = 0.1;
+			EXPLORATION_WEIGHTING.put(peasant.getID(), Math.signum(EXPLORATION_WEIGHTING.get(peasant.getID())) * 
+					Math.pow(EXPLORATION_WEIGHTING.get(peasant.getID()), .1));
+			UP_WEIGHTING.put(peasant.getID(),  Math.signum(UP_WEIGHTING.get(peasant.getID())) * 
+					Math.pow(UP_WEIGHTING.get(peasant.getID()), .02));
+			RIGHT_WEIGHTING.put(peasant.getID(),  Math.signum(RIGHT_WEIGHTING.get(peasant.getID())) * 
+					Math.pow(RIGHT_WEIGHTING.get(peasant.getID()), .02));
 		}
 		
+		//If a peasant was uninjured, we use Bayes' Theorem to decrease the probability of a tower
+		//near where the peasant was shot.  Also, we make our agent less cautious by reweighting
+		//some of our heuristics.
 		for (UnitView peasant : uninjured) {
 			for (int x = peasant.getXPosition() - 4; x < peasant.getXPosition() + 5; x++) {
 				if (x < state.getXExtent() && x >= 0) {
 					for (int y = peasant.getYPosition() - 5; y < peasant.getYPosition() + 5; y++) {
 						if (y < state.getYExtent() && y >= 0) {
 							towerProbs[x][y] = ((1 - pShotGivenTower)*towerProbs[x][y])/(1 - getPShot(peasant, state));
-							
-//							towerProbs[x][y] *= .25;
 						}
 					}
 				}
 			}
 			
-			EXPLORATION_WEIGHTING *= 2.5;
-			UP_WEIGHTING *= 3.0;
-			RIGHT_WEIGHTING *= 3.0;
+			EXPLORATION_WEIGHTING.put(peasant.getID(), EXPLORATION_WEIGHTING.get(peasant.getID())*2.5);
+			UP_WEIGHTING.put(peasant.getID(), UP_WEIGHTING.get(peasant.getID())*10.0);
+			RIGHT_WEIGHTING.put(peasant.getID(), RIGHT_WEIGHTING.get(peasant.getID())*8.0);
 		}
 		
-		/** Mark all Tower squares with max probability */
+		/** Mark all Tower squares with max probability **/
 		for (UnitView unit: state.getAllUnits()) {
 			if (unit.getTemplateView().getName().equalsIgnoreCase("ScoutTower") ||
 				unit.getTemplateView().getName().equalsIgnoreCase("GuardTower")) {
@@ -130,19 +168,20 @@ public class ProbabilisticSearchAgent extends Agent {
 			}
 		}
 		
-		/** Mark all Resource squares with zero probability */
+		/** Mark all Resource squares with zero probability **/
 		for (ResourceView resource: state.getAllResourceNodes()) {
 			knownTiles[resource.getXPosition()][resource.getYPosition()] = .0;
 			occupied[resource.getXPosition()][resource.getYPosition()] = true;
 		}
 		
+		/** Mark all visibly empty tiles as having a zero probability that there is a tower **/
 		for (UnitView peasant : getAllPeasants(state)) {
 			for (int x = peasant.getXPosition() - 2; x < peasant.getXPosition() + 3; x++) {
 				if (x >= 0 && x < state.getXExtent()) {
 					for (int y = peasant.getYPosition() - 2; y < peasant.getYPosition() + 3; y++) {
 						if (y >= 0 && y < state.getYExtent()) {
 							if (!occupied[x][y]) {
-								knownTiles[x][y] = 0.0; // ??? this was 0.5 for some reason
+								knownTiles[x][y] = 0.0;
 							}
 						}
 					}
@@ -153,87 +192,107 @@ public class ProbabilisticSearchAgent extends Agent {
 			occupied[peasant.getXPosition()][peasant.getYPosition()] = true;
 		}
 		
+		//Find the next move
 		for (UnitView peasant : getAllPeasants(state)) {
-			int xTile = 0;
-			int yTile = 0;
-			Double probability = Double.MAX_VALUE;
+			Boolean deposit = false;
+			Boolean gather = false;
 			
-			for (int x = peasant.getXPosition() - 1; x <= peasant.getXPosition() + 1; x++) {
-				if (x < state.getXExtent() && x >= 0) {
-					for (int y = peasant.getYPosition() - 1; y <= peasant.getYPosition() + 1; y++) {
-						if (y < state.getYExtent() && y >= 0 &&
-								occupied[x][y] == false) {
-							Double innerProbability = 0.0;
-							System.out.print("Considering [" + x + ", " + y + "]: (");
-							
-							for (int innerX = x - 4; innerX < x + 5; innerX++) {
-								if (innerX < state.getXExtent() && innerX >= 0) {
-									for (int innerY = y - 4; innerY < y + 5; innerY++) {
-										if (innerY < state.getYExtent() && innerY >= 0) {
-											if (knownTiles[innerX][innerY] != null) {
-												innerProbability += knownTiles[innerX][innerY];
-												System.out.print(knownTiles[innerX][innerY] + " + ");
-											} else {
-												innerProbability += towerProbs[innerX][innerY];
-												System.out.print(towerProbs[innerX][innerY] + " + ");
-//												System.out.println("Tower Prob: " + towerProbs[innerX][innerY]);
-											}
-										} else {
-											System.out.print(" OFF + ");
-										}
-									}
-								} else {
-									System.out.print(" OFF + ");
+			if (peasant.getCargoAmount() > 0) {
+				for (UnitView townHall : state.getAllUnits()) {
+					if (townHall.getTemplateView().getName().equalsIgnoreCase("TownHall")) {
+						for (int x = peasant.getXPosition() - 1; x < peasant.getYPosition() + 1; x++) {
+							for (int y = peasant.getXPosition() - 1; y < peasant.getYPosition() + 1; y++) {
+								if (Math.abs(townHall.getXPosition() - x) < 2 &&Math.abs(townHall.getYPosition() - y) < 2) {
+									toReturn.put(peasant.getID(), Action.createCompoundDeposit(peasant.getID(), townHall.getID()));
+									deposit = true;
 								}
-								
-								System.out.println();
-							}
-							
-							System.out.print("0)");
-							
-//							innerProbability += (Math.abs(y - 0) + Math.abs(x - state.getXExtent()));
-							
-							if (x > peasant.getXPosition()) {
-								innerProbability /= RIGHT_WEIGHTING;
-								System.out.print(" / " + RIGHT_WEIGHTING);
-							}
-							
-							if (y < peasant.getYPosition()) {
-								innerProbability /= UP_WEIGHTING;
-								System.out.print(" / " + UP_WEIGHTING);
-							}
-							
-							if (!visited[x][y]) {
-								innerProbability /= EXPLORATION_WEIGHTING;
-								System.out.print(" / " + EXPLORATION_WEIGHTING);
-							}
-							
-							System.out.println(" = " + innerProbability);
-							
-							if (innerProbability < probability) {
-								probability = innerProbability;
-								xTile = x;
-								yTile = y;
 							}
 						}
 					}
 				}
+			} else {
+				for (ResourceView resource : state.getAllResourceNodes()) {
+					if (resource.getType().toString().equalsIgnoreCase("GOLD_MINE")) {
+						toReturn.put(peasant.getID(), Action.createCompoundGather(peasant.getID(), resource.getID()));
+						UP_WEIGHTING.put(peasant.getID(), UP_WEIGHTING_INITIAL * -1);
+						RIGHT_WEIGHTING.put(peasant.getID(), RIGHT_WEIGHTING_INITIAL * -1);
+						gather = true;
+					}
+				}
 			}
 			
-			for (UnitView unit : getAllPeasants(state)) {
-				occupied[unit.getXPosition()][unit.getYPosition()] = false;
-			}
+			/** If we aren't depositing or gathering, than find the best next move **/
+			if (!deposit && !gather) {
+				int xTile = 0;
+				int yTile = 0;
+				Double probability = Double.MAX_VALUE;
+				
+				for (int x = peasant.getXPosition() - 1; x <= peasant.getXPosition() + 1; x++) {
+					if (x < state.getXExtent() && x >= 0) {
+						for (int y = peasant.getYPosition() - 1; y <= peasant.getYPosition() + 1; y++) {
+							if (y < state.getYExtent() && y >= 0 &&
+									occupied[x][y] == false) {
+								Double innerProbability = calculatureUtility(x, y, peasant, state);
 
-			System.out.println(probability + " MOVE TO: " + xTile + ", " + yTile);
-			
-			toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
-			
-			printProbs(state, peasant);
+								if (innerProbability < probability) {
+									probability = innerProbability;
+									xTile = x;
+									yTile = y;
+								}
+							}
+						}
+					}
+				}
+				
+				for (UnitView unit : getAllPeasants(state)) {
+					occupied[unit.getXPosition()][unit.getYPosition()] = false;
+				}
+
+				toReturn.put(peasant.getID(), Action.createCompoundMove(peasant.getID(), xTile, yTile));
+			}
 		}	
-		
-		System.out.println("--------------------------------------------------------------------------------------------");
-		
+
 		return toReturn;
+	}
+	
+	/**
+	 * This utility function is a sum over the probability that there is a tower for each
+	 * square in a 5 square radius around the peasant.  Additional heuristics are factored
+	 * in for moving towards the gold mine or town hall as well as exploring new territory.
+	 */
+	private Double calculatureUtility(int x, int y, UnitView peasant, StateView state) {
+		Double innerProbability = 0.0;
+		
+		for (int innerX = x - 4; innerX < x + 5; innerX++) {
+			if (innerX < state.getXExtent() && innerX >= 0) {
+				for (int innerY = y - 4; innerY < y + 5; innerY++) {
+					if (innerY < state.getYExtent() && innerY >= 0) {
+						if (knownTiles[innerX][innerY] != null &&
+							knownTiles[innerX][innerY] == 1.0) {
+							innerProbability += Double.MAX_VALUE;
+						} else if (knownTiles[innerX][innerY] != null) {
+							innerProbability += knownTiles[innerX][innerY];
+						} else {
+							innerProbability += towerProbs[innerX][innerY];
+						}
+					}
+				}
+			}
+		}
+		
+		if (x > peasant.getXPosition()) {
+			innerProbability /= RIGHT_WEIGHTING.get(peasant.getID());
+		} 
+		
+		if (y < peasant.getYPosition()) {
+			innerProbability /= UP_WEIGHTING.get(peasant.getID());
+		}
+		
+		if (!visited[x][y]) {
+			innerProbability /= EXPLORATION_WEIGHTING.get(peasant.getID());
+		}
+		
+		return innerProbability;
 	}
 	
 	private Set<UnitView> getAllPeasants(StateView state) {
@@ -248,30 +307,10 @@ public class ProbabilisticSearchAgent extends Agent {
 		return toReturn;
 	}
 	
-	private void printProbs(StateView state, UnitView unit) {
-		System.out.println("-----------------------------------------------------------------------------------------");
-		System.out.println("-----------------------------------------------------------------------------------------");
-		for (int y = unit.getYPosition() - 7; y < unit.getYPosition() + 7; y++) {
-			for (int x = unit.getXPosition() - 7; x < unit.getXPosition() + 7; x++) {
-				if (x == unit.getXPosition() && y == unit.getYPosition()) {
-					System.out.print(" [ (0^0) ] ");
-				} else if (x >= 0 && x < state.getXExtent() &&
-					y >= 0 && y < state.getYExtent()) {
-					if (towerProbs[x][y] < .000005) {
-						System.out.print(" [0.00000] ");
-					} else {
-						System.out.print(" [" + new DecimalFormat("#.#####").format(towerProbs[x][y]) + "] ");
-					}
-				} else {
-					System.out.print(" [  OFF  ] ");
-				}
-			}
-			System.out.println("  " + y);
-			System.out.println();
-			System.out.println();
-		}
-	}
-	
+	/** 
+	 * Return the probability that a peasant in a given location will be shot given the
+	 * data we currently have in our probability distribution.
+	 */
 	private Double getPShot(UnitView peasant, StateView state) {
 		Double total = 0.0;
 		
